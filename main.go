@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+var (
+	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl"}
+)
+
 func classifyFile(filename string, candidates []string) (string, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -91,7 +95,7 @@ func main() {
 
 		totalSize = totalSize + file.Size()
 		totalNum += 1
-		lang, err := classifyFile(fullPath, []string{*language})
+		lang, err := classifyFile(fullPath, langCandidates)
 		if err != nil {
 			log.Printf("error: failed to class file.%v", file.Name())
 			continue
