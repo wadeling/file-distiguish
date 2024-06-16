@@ -109,5 +109,5 @@ func main() {
 	end := time.Now()
 	duration := end.Sub(start)
 	log.Printf("total file num:%v,total size:%v,total time:%v,average time:%v,succ num:%v,accurate:%v,average file size:%v",
-		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, successNum/totalNum, totalSize/totalNum)
+		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, float32(successNum)/float32(totalNum), totalSize/totalNum)
 }
