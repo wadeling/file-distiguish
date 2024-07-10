@@ -10,11 +10,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 var (
-	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar"}
+	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar", "Json"}
 )
 
 func classifyFile(filename string, candidates []string) (string, error) {
@@ -25,12 +26,12 @@ func classifyFile(filename string, candidates []string) (string, error) {
 	}
 	//	log.Printf("file data:%v", string(data))
 
-	//lang := enry.GetLanguage(*fileName, []byte(data))
-	//lang,safe := enry.GetLanguageByContent(*fileName, []byte(data))
+	lang := enry.GetLanguage(filename, []byte(data))
+	//lang, safe := enry.GetLanguageByContent(filename, []byte(data))
 
-	//candidates := []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl"}
-	lang, safe := enry.GetLanguageByClassifier([]byte(data), candidates)
-	log.Printf("file %v,lang:%v,safe %v", filename, lang, safe)
+	//lang, safe := enry.GetLanguageByClassifier([]byte(data), candidates)
+	//log.Printf("file %v,lang:%v,safe %v", filename, lang, safe)
+	log.Printf("file %v,lang:%v,", filename, lang)
 	if len(lang) == 0 {
 		log.Printf("failed to classify file type.%v", filename)
 		return "", fmt.Errorf("failed to classify file type")
@@ -60,6 +61,65 @@ func detectLang(filename string) (string, error) {
 	return lexer.Config().Name, nil
 }
 
+func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
+	var (
+		totalSize  int64 = 0
+		totalNum   int64 = 0
+		successNum int64 = 0
+	)
+
+	start := time.Now()
+
+	_ = filepath.WalkDir(rootPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			log.Printf("failed to walk dir.%v,%v", path, err)
+			return err
+		}
+		if d.IsDir() {
+			log.Printf("%v is dir,continue", d.Name())
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			log.Printf("err: failed to get file info.%v", d.Name())
+			return err
+		}
+
+		totalSize = totalSize + info.Size()
+		totalNum += 1
+		if checkJar {
+			// check jar file
+			isJar, err := ft.IsJar(path)
+			if err != nil {
+				log.Printf("error: failed to check jar file.%v", path)
+				return err
+			}
+			if !isJar {
+				log.Printf("not jar file.%v", path)
+				return nil
+			}
+		} else {
+			// check other lang file
+			lang, err := classifyFile(path, langCandidates)
+			if err != nil {
+				log.Printf("error: failed to class file.%v", path)
+				// continue check other files,so return nil
+				return nil
+			}
+			if strings.ToLower(lang) != strings.ToLower(expectLang) {
+				log.Printf("error: language not match.%v,%v", lang, expectLang)
+				return nil
+			}
+		}
+		successNum += 1
+		return nil
+	})
+	end := time.Now()
+	duration := end.Sub(start)
+	log.Printf("total file num:%v,total size:%v,total time:%v,average time:%v,succ num:%v,accurate:%v,average file size:%v",
+		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, float32(successNum)/float32(totalNum), totalSize/totalNum)
+}
+
 func main() {
 	fileName := flag.String("fileName", "", "file to detect")
 	fileDirs := flag.String("dirs", "", "dir that contains language files for bench test")
@@ -75,6 +135,12 @@ func main() {
 			isJar, err := ft.IsJar(*fileName)
 			log.Printf("is jar:%v,err:%v", isJar, err)
 		} else {
+			// is normal file
+			if enry.IsConfiguration(*fileName) {
+				log.Printf("is conf file")
+				return
+			}
+
 			lang, safe := classifyFile(*fileName, langCandidates)
 			//lang, err := detectLang(*fileName)
 			log.Printf("lang %v,safe %v", lang, safe)
@@ -82,69 +148,8 @@ func main() {
 		return
 	}
 
-	// bench with dir
-	f, err := os.Open(*fileDirs)
-	if err != nil {
-		log.Fatalf("failed to open dir.%v,%v", *fileDirs, err)
-		return
-	}
-	defer f.Close()
+	// recursively detect dirs
+	detectLangByDir(*fileDirs, *checkJar, *language)
 
-	// 读取目录下的所有文件和子目录
-	files, err := f.Readdir(-1)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	var (
-		totalSize  int64 = 0
-		totalNum   int64 = 0
-		successNum int64 = 0
-	)
-
-	start := time.Now()
-	for _, file := range files {
-		if file.IsDir() {
-			log.Printf("ignore subdir:%v", file.Name())
-			continue
-		}
-		fullPath := filepath.Join(*fileDirs, file.Name())
-
-		//ext := filepath.Ext(fullPath)
-		//if *fileExt != ext {
-		//	log.Printf("file %v not match,ignore", file.Name())
-		//	continue
-		//}
-
-		totalSize = totalSize + file.Size()
-		totalNum += 1
-		if *checkJar {
-			isJar, err := ft.IsJar(fullPath)
-			//isJar, err := detectJar(fullPath)
-			if err != nil {
-				log.Printf("error: failed to check jar file.%v", file.Name())
-				continue
-			}
-			if !isJar {
-				log.Printf("not jar file.%v", file.Name())
-				continue
-			}
-		} else {
-			lang, err := classifyFile(fullPath, langCandidates)
-			if err != nil {
-				log.Printf("error: failed to class file.%v", file.Name())
-				continue
-			}
-			if lang != *language {
-				log.Printf("error: language not match.%v,%v", lang, *language)
-				continue
-			}
-		}
-		successNum += 1
-	}
-	end := time.Now()
-	duration := end.Sub(start)
-	log.Printf("total file num:%v,total size:%v,total time:%v,average time:%v,succ num:%v,accurate:%v,average file size:%v",
-		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, float32(successNum)/float32(totalNum), totalSize/totalNum)
+	log.Print("end")
 }
