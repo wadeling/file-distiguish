@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/essentialkaos/go-jar"
 	"github.com/go-enry/go-enry/v2"
 	ft "github.com/wadeling/file-distiguish/pkg/filetype"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,7 +17,7 @@ import (
 )
 
 var (
-	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar", "Json"}
+	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar"}
 )
 
 func classifyFile(filename string, candidates []string) (string, error) {
@@ -61,6 +63,36 @@ func detectLang(filename string) (string, error) {
 	return lexer.Config().Name, nil
 }
 
+func shouldFilterFile(filename string) bool {
+	// if image file.jpg etc..
+	if enry.IsImage(filename) {
+		log.Printf("image file.%v", filename)
+		return true
+	}
+
+	// check if binary
+	f, err := os.Open(filename)
+	if err != nil {
+		log.Printf("failed to open file %v", filename)
+		return true
+	}
+	reader := bufio.NewReader(f)
+	buf := make([]byte, 8000)
+	n, err := reader.Read(buf)
+	if err != nil && err != io.EOF {
+		log.Printf("failed to read file.%v", filename)
+		return true
+	}
+	if n > 0 {
+		if enry.IsBinary(buf[:n]) {
+			log.Printf("binary file.%v", filename)
+			return true
+		}
+	}
+
+	return false
+}
+
 func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
 	var (
 		totalSize  int64 = 0
@@ -83,6 +115,10 @@ func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
 		if err != nil {
 			log.Printf("err: failed to get file info.%v", d.Name())
 			return err
+		}
+		if shouldFilterFile(path) {
+			//log.Printf("ignore file for it is image or binary.%v", path)
+			return nil
 		}
 
 		totalSize = totalSize + info.Size()
