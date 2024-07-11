@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar"}
+	langCandidates = []string{"Python", "JavaScript", "Go", "Ruby", "PHP", "Shell", "Perl", "Jar", "INI", "XML"}
 )
 
 func classifyFile(filename string, candidates []string) (string, error) {
@@ -93,11 +93,12 @@ func shouldFilterFile(filename string) bool {
 	return false
 }
 
-func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
+func detectLangByDir(rootPath string, checkJar bool, expectLang string, checkNotLang bool) {
 	var (
-		totalSize  int64 = 0
-		totalNum   int64 = 0
-		successNum int64 = 0
+		totalSize     int64 = 0
+		totalNum      int64 = 0
+		successNum    int64 = 0
+		notLangSucNum int64 = 0
 	)
 
 	start := time.Now()
@@ -116,13 +117,15 @@ func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
 			log.Printf("err: failed to get file info.%v", d.Name())
 			return err
 		}
+
+		totalNum += 1
 		if shouldFilterFile(path) {
+			notLangSucNum += 1
 			//log.Printf("ignore file for it is image or binary.%v", path)
 			return nil
 		}
 
 		totalSize = totalSize + info.Size()
-		totalNum += 1
 		if checkJar {
 			// check jar file
 			isJar, err := ft.IsJar(path)
@@ -143,6 +146,7 @@ func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
 				return nil
 			}
 			if strings.ToLower(lang) != strings.ToLower(expectLang) {
+				notLangSucNum += 1
 				log.Printf("error: language not match.%v,%v", lang, expectLang)
 				return nil
 			}
@@ -152,8 +156,8 @@ func detectLangByDir(rootPath string, checkJar bool, expectLang string) {
 	})
 	end := time.Now()
 	duration := end.Sub(start)
-	log.Printf("total file num:%v,total size:%v,total time:%v,average time:%v,succ num:%v,accurate:%v,average file size:%v",
-		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, float32(successNum)/float32(totalNum), totalSize/totalNum)
+	log.Printf("total file num:%v,total size:%v,total time:%v,average time:%v,lang succ num:%v,accurate:%v,average file size:%v,not lang num: %v",
+		totalNum, totalSize, duration, duration/time.Duration(totalNum), successNum, float32(successNum)/float32(totalNum), totalSize/totalNum, notLangSucNum)
 }
 
 func main() {
@@ -161,6 +165,7 @@ func main() {
 	fileDirs := flag.String("dirs", "", "dir that contains language files for bench test")
 	language := flag.String("lang", "", "language that dir refer to")
 	checkJar := flag.Bool("checkJar", false, "check jar file")
+	checkNotLang := flag.Bool("checkNotLang", false, "check not lang file")
 	//fileExt := flag.String("ext", "", "language file ext")
 	flag.Parse()
 
@@ -185,7 +190,7 @@ func main() {
 	}
 
 	// recursively detect dirs
-	detectLangByDir(*fileDirs, *checkJar, *language)
+	detectLangByDir(*fileDirs, *checkJar, *language, *checkNotLang)
 
 	log.Print("end")
 }
